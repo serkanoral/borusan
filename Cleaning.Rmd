@@ -1,0 +1,284 @@
+---
+title: "Cleaning"
+author: "Serkan Oral"
+date: '2022-06-21'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Packages
+```{r packages, include=FALSE}
+
+
+library(tidyverse)
+library(naniar)
+library(skimr)
+library(lubridate)
+options(scipen=999)
+
+```
+
+
+DATA
+```{r}
+
+input_model <- read.csv("Datathon_Input_Model.csv",fileEncoding="UTF-16LE")
+sample <- read.csv("sample_submission.csv")
+train_data <- read.csv("train.csv")
+```
+
+
+
+```{r}
+train_data <- train_data %>% 
+  left_join(input_model)
+
+train_data[train_data==""]<-NA
+
+```
+
+
+```{r}
+miss_var_summary(train_data)
+```
+
+
+```{r}
+
+train <- train_data %>% 
+  mutate(FirstRegistiration = as_date(FirstRegistiration),
+         InvoiceDate = as_date(InvoiceDate),
+         IsMalfunction = as.factor(IsMalfunction),
+         Make = str_to_title(Make),
+         BodyCode = str_to_upper(BodyCode),
+         MainGroupDescription = str_to_title(MainGroupDescription),
+         MainGroupDescription = case_when(
+         MainGroupDescription == "Bakim Zamanlari" ~ "Bakim",
+         MainGroupDescription == "Bakım" ~ "Bakim",
+         MainGroupDescription == "Direksion" ~ "Direksiyon",
+         MainGroupDescription == "Di̇reksi̇yon" ~ "Direksiyon",
+         MainGroupDescription == "Belirsiz Belirsiz" ~ "Belirsiz",
+         MainGroupDescription == "Boya Tami̇r" ~"Boya & Sarf Malzeme",
+         MainGroupDescription == "Engine"~ "Motor",
+         MainGroupDescription == "Otomati̇k Şanziman"~"Otomatik Şanzıman",
+         MainGroupDescription == "Yakit Si̇stemi̇"~"Yakıt Sistemi",
+         TRUE ~ MainGroupDescription)) %>% 
+  mutate_if(is.character,factor)    
+
+
+
+```
+
+
+```{r}
+train %>% miss_var_summary()  
+```
+
+```{r}
+gg_miss_var(train)
+```
+
+
+
+
+```{r}
+train %>% 
+  ggplot(aes(IsMalfunction,fill = IsMalfunction)) +
+  geom_bar()
+```
+
+```{r}
+train %>% 
+  ggplot(aes(City,fill = IsMalfunction)) +
+  geom_bar()
+```
+
+```{r}
+train %>% 
+  ggplot(aes(FirstRegistiration,fill = IsMalfunction)) +
+  geom_bar()
+```
+
+
+
+
+```{r}
+train %>% 
+  ggplot(aes(Make,fill = IsMalfunction)) +
+  geom_bar()
+```
+
+
+```{r}
+train %>% 
+  ggplot(aes(BodyCode,fill = IsMalfunction)) +
+  geom_bar()
+```
+
+
+```{r}
+train %>% 
+  ggplot(aes(Serie,fill = IsMalfunction)) +
+  geom_bar()
+```
+
+
+```{r}
+train %>% 
+  ggplot(aes(ModelCode,fill = IsMalfunction)) +
+  geom_bar() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+
+```{r}
+train %>% 
+  ggplot(aes(ModelYear,fill = IsMalfunction)) +
+  geom_bar() 
+```
+
+```{r}
+train %>% 
+  ggplot(aes(InvoiceDate,fill = IsMalfunction)) +
+  geom_bar() 
+```
+
+```{r}
+train %>% 
+  ggplot(aes(Milage,fill = IsMalfunction)) +
+  geom_histogram()+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_x_log10()
+```
+
+```{r}
+
+train %>% 
+  ggplot(aes(MainGroupDescription,fill = IsMalfunction)) +
+  geom_bar() +theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+```{r}
+train %>% 
+  ggplot(aes(SubGroupDescription,fill = IsMalfunction)) +
+  geom_bar() +theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+```{r}
+train %>% 
+  ggplot(aes(SplitCode,fill = IsMalfunction)) +
+  geom_bar() 
+```
+
+```{r}
+train %>% 
+  ggplot(aes(ItemDescription,fill = IsMalfunction)) +
+  geom_bar() 
+```
+
+
+```{r}
+train %>% 
+  ggplot(aes(Split_Grubu,fill = IsMalfunction)) +
+  geom_bar() 
+```
+
+
+```{r}
+train %>% 
+  ggplot(aes(ItemType,fill = IsMalfunction)) +
+  geom_bar() 
+```
+
+
+```{r}
+train %>% 
+  ggplot(aes(MainGroupCode,fill = IsMalfunction)) +
+  geom_bar() 
+```
+
+
+```{r}
+train %>% 
+  ggplot(aes(SubGroupCode,fill = IsMalfunction)) +
+  geom_bar() 
+```
+
+
+```{r}
+train %>% 
+  ggplot(aes(ModelDefinition,fill = IsMalfunction)) +
+  geom_bar() +theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+
+
+
+```{r}
+miss_var_summary(train)
+```
+
+
+
+```{r}
+train %>% 
+  filter(is.na(FirstRegistiration)) %>% 
+  ggplot(aes(IsMalfunction,fill = IsMalfunction)) +
+  geom_bar()
+```
+
+
+```{r}
+train %>% 
+  filter(is.na(FirstRegistiration)) %>% 
+  ggplot(aes(ModelYear,fill = IsMalfunction)) +
+  geom_bar()
+```
+```{r}
+
+train %>% 
+  filter(is.na(FirstRegistiration)) %>% 
+  ggplot(aes(ModelDefinition,fill = IsMalfunction)) +
+  geom_bar()+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+```
+
+
+Some notes before modelling
+
+ItemDescription and SubGroupDescription text tokenization.
+
+down or over sample according to IsMalfunction
+
+Milage - yeojohansan or log transformatin
+
+Imputation
+FirstRegistration - KNN
+CustomerId - unknown
+Serie - KNN
+ModelDefination - unknown
+ItemDescription - unknown "Belirsiz"
+ItemNo - unknown
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

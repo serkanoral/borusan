@@ -1,0 +1,275 @@
+---
+title: "Model"
+author: "Serkan Oral"
+date: '2022-06-25'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(naniar)
+library(skimr)
+library(lubridate)
+library(tidymodels)
+library(themis)
+library(treesnip)
+library(textrecipes)
+
+```
+
+DATA
+```{r}
+
+input_model <- read.csv("Datathon_Input_Model.csv",fileEncoding="UTF-16LE")
+sample <- read.csv("sample_submission.csv")
+train_data <- read.csv("train.csv")
+```
+
+
+```{r}
+train_data <- train_data %>% 
+  left_join(input_model)
+
+train_data[train_data==""]<-NA
+
+```
+
+```{r}
+train <- train_data %>% 
+  mutate(FirstRegistiration = as_date(FirstRegistiration),
+         InvoiceDate = as_date(InvoiceDate),
+         IsMalfunction = as.factor(IsMalfunction),
+         BranchCode = as.factor(BranchCode),
+         Make = str_to_title(Make),
+         BodyCode = str_to_upper(BodyCode),
+         MainGroupDescription = str_to_title(MainGroupDescription),
+         MainGroupDescription = case_when(
+         MainGroupDescription == "Bakim Zamanlari" ~ "Bakim",
+         MainGroupDescription == "Bakım" ~ "Bakim",
+         MainGroupDescription == "Direksion" ~ "Direksiyon",
+         MainGroupDescription == "Di̇reksi̇yon" ~ "Direksiyon",
+         MainGroupDescription == "Belirsiz Belirsiz" ~ "Belirsiz",
+         MainGroupDescription == "Boya Tami̇r" ~"Boya & Sarf Malzeme",
+         MainGroupDescription == "Engine"~ "Motor",
+         MainGroupDescription == "Otomati̇k Şanziman"~"Otomatik Şanzıman",
+         MainGroupDescription == "Yakit Si̇stemi̇"~"Yakıt Sistemi",
+         TRUE ~ MainGroupDescription),
+         ItemDescription = case_when(
+         ItemDescription == "Dönel Titreşim Damperinin Değiştirilmesi"~
+             "Dönel Titreşim Damperini Değiştirme",
+         ItemDescription == "GERGİ"~ "GERGI",
+         ItemDescription == "GERGİ BİLYASI"~ "GERGI",  
+         ItemDescription == "GERGI BILYAS" ~ "GERGİ BİLYASI",
+         ItemDescription == "V KAYIŞ" ~ "V KAYIŞI",
+         ItemDescription == "V KAYISI" ~ "V KAYIŞI",
+         ItemDescription == "SU POMPA KAYIŞI" ~ "SU POMPASI",
+             TRUE ~ ItemDescription
+             )) %>% 
+  mutate_if(is.character,factor)
+
+
+checkup_count <- train %>% count(VehicleId, sort =  TRUE)
+
+train <- train %>% left_join(checkup_count)
+
+
+```
+
+```{r}
+train <- train %>% 
+mutate(ModelYear_date = dmy(paste0("1","-","1","-",ModelYear)),
+                           FirstRegistiration = coalesce(FirstRegistiration,ModelYear_date)) %>%
+select(-ModelYear_date)
+
+test <- train %>% 
+mutate(ModelYear_date = dmy(paste0("1","-","1","-",ModelYear)),
+                           FirstRegistiration = coalesce(FirstRegistiration,ModelYear_date)) %>%
+select(-ModelYear_date)
+
+
+```
+
+
+```{r}
+
+train <- train %>%
+  rename(maintenance_count =n) %>% 
+mutate(Milage_per_main = Milage /maintenance_count )
+```
+
+```{r}
+
+Last_milage <- train %>% 
+  group_by(VehicleId) %>% 
+  summarise(Last_milage = max(Milage))
+
+train <- train %>% 
+  left_join(Last_milage)
+
+Last_day <- dmy("31-12-2021")
+
+train$Last_day <- Last_day
+
+```
+
+```{r}
+
+First_invoice <- train %>% 
+  group_by(VehicleId) %>% 
+  summarise(First_invoice = min(InvoiceDate))
+
+train <- train %>% 
+  left_join(First_invoice)
+
+train <- train %>% 
+  mutate(Usage_day = Last_day - First_invoice)
+
+```
+
+
+```{r}
+train <- train %>% 
+  mutate(Usage_day = as.numeric(Usage_day))
+
+```
+
+
+```{r}
+test <- train %>% 
+  mutate(Last_day = dmy("15-06-2022"),
+         maintenance_count =  as.numeric(Last_day - First_invoice) * maintenance_count/Usage_day,
+         Last_milage = as.numeric(Last_day - First_invoice) * Last_milage/Usage_day,
+         Usage_day = as.numeric(Last_day - First_invoice),
+         Milage_per_main = Last_milage / maintenance_count )
+```
+
+
+Some notes before modelling
+
+ItemDescription and SubGroupDescription text tokenization.
+
+down or over sample according to IsMalfunction
+
+Milage - yeojohansan or log transformatin
+
+Imputation
+FirstRegistration - KNN
+CustomerId - unknown
+Serie - KNN
+ModelDefination - unknown
+ItemDescription - unknown "Belirsiz"
+ItemNo - unknown
+
+```{r}
+test <- test %>% 
+  select(-IsMalfunction)
+```
+
+
+Data Splitting
+```{r}
+
+set.seed(123)
+split <- initial_split(train, strata = IsMalfunction)
+train_t <- training(split)
+test_t <- testing(split)
+
+kfold <- vfold_cv(train)
+
+```
+
+
+Recipe
+```{r}
+
+rec <- train_t %>% 
+  recipe(IsMalfunction ~.) %>% 
+  step_rm(FirstRegistiration) %>% 
+  step_novel(all_nominal_predictors()) %>% 
+  step_unknown(CustomerId, ModelDefinition,ItemNo,ItemDescription) %>% 
+  step_impute_knn(all_predictors()) %>% 
+  step_YeoJohnson(Milage) %>% 
+  step_normalize(all_numeric_predictors()) %>% 
+  step_downsample(IsMalfunction)
+
+```
+
+```{r}
+
+rec %>% 
+  prep() %>% 
+  bake(new_data = NULL) %>% 
+ view()
+```
+
+```{r}
+
+rf_spec <- rand_forest(mtry = tune(), trees = 1000,min_n = tune()) %>% 
+  set_engine("ranger") %>% 
+  set_mode("classification")
+
+```
+
+```{r}
+rf_wf <- workflow() %>% 
+  add_recipe(rec,blueprint = hardhat::default_recipe_blueprint(allow_novel_levels = TRUE)) %>% 
+  add_model(rf_spec)
+```
+
+```{r}
+set.seed(123)
+grid <- grid_latin_hypercube(min_n(),finalize(mtry(),train_t), size = 25)
+```
+
+```{r}
+set.seed(123)
+rs <- tune_grid(object = rf_wf,resamples = kfold,grid = grid,control = control_grid(save_pred = TRUE), metrics = metric_set(f_meas))
+```
+
+```{r}
+
+final_wf <- finalize_workflow(rf_wf, select_best(rs))
+```
+
+
+```{r}
+
+set.seed(123)
+doParallel::registerDoParallel()
+rf_fit <- fit(final_wf, train)
+```
+
+
+```{r}
+
+doParallel::registerDoParallel()
+
+set.seed(123)
+prediction <- predict(rf_fit,new_data = test) %>% 
+  rename(IsMalfunction =.pred_class )
+
+submission <- test %>% 
+  select(VehicleId) %>% 
+  bind_cols(prediction) %>% 
+  mutate(VehicleId = as.character(VehicleId),
+         IsMalfunction = as.numeric(levels(IsMalfunction)[IsMalfunction]))
+
+submission %>% 
+  group_by(VehicleId) %>% 
+  summarise(IsMalfunction = max(IsMalfunction)) %>% 
+  write_csv("submission.csv")  
+
+```
+
+
+
+
+
+
+
+
+
