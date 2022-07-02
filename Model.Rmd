@@ -147,6 +147,72 @@ test <- train %>%
          Milage_per_main = Last_milage / maintenance_count )
 ```
 
+Selecting features
+
+
+```{r}
+
+train <- train %>% 
+  select(-ServiceInvoiceDate, -ServiceInvoiceLineNo,-Milage_per_main)
+
+test <- test %>% 
+  select(-ServiceInvoiceDate, -ServiceInvoiceLineNo,-Milage_per_main)
+
+```
+
+TEST
+MainGroupDescription
+SubGroupDescription
+SplitCode
+Split_Grubu
+ItemDescription
+ItemNo
+ItemType
+MainGroupCode
+SubGroupCode
+
+ItemNo - Step_other
+
+```{r}
+test$MainGroupDescription <- NA
+test$SubGroupDescription <- NA
+test$SplitCode <- NA
+test$Split_Grubu <- NA
+test$ItemDescription <- NA
+test$ItemNo <- NA
+test$ItemType <- NA
+test$MainGroupCode <- NA
+test$SubGroupCode <- NA
+```
+
+```{r}
+train_ <- train %>% 
+  select(-IsMalfunction) 
+
+test_knn_rec <- train_ %>% 
+  recipe(MainGroupDescription ~ City + CustomerId + VehicleId + FirstRegistiration + Make +
+           BodyCode + Serie + ModelCode + ModelYear + InvoiceDate + BranchCode +
+           Milage + ModelDefinition + maintenance_count + Last_milage + Last_day +                     First_invoice + Usage_day) %>% 
+  step_novel(all_nominal_predictors()) %>% 
+  step_unknown(CustomerId, ModelDefinition) %>% 
+  step_impute_knn(all_predictors()) 
+
+```
+
+```{r}
+
+test_spec <- naive_Bayes() %>% 
+  set_engine("naivebayes") %>% 
+  set_mode("classification")
+
+test_wf <- workflow() %>% 
+  add_recipe(test_knn_rec) %>% 
+  add_model(test_spec)
+
+test_fit <- fit(test_wf,train)
+
+```
+
 
 Some notes before modelling
 
@@ -188,7 +254,6 @@ Recipe
 
 rec <- train_t %>% 
   recipe(IsMalfunction ~.) %>% 
-  step_rm(FirstRegistiration) %>% 
   step_novel(all_nominal_predictors()) %>% 
   step_unknown(CustomerId, ModelDefinition,ItemNo,ItemDescription) %>% 
   step_impute_knn(all_predictors()) %>% 

@@ -138,6 +138,11 @@ train %>%
   ggplot(aes(ModelYear,fill = IsMalfunction)) +
   geom_bar() 
 ```
+```{r}
+train %>% 
+  ggplot(aes(ItemNo,fill = IsMalfunction)) +
+  geom_bar() 
+```
 
 ```{r}
 train %>% 
